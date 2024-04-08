@@ -1,0 +1,21 @@
+; Yasu的配置文件
+[app]
+
+port=8080
+;端口号，想暴露在外网的话，需要在路由器上进行端口映射
+
+video_url = https://cdn.pixabay.com/video/2024/02/02/199001-909564581_large.mp4
+;初始视频地址，后续可以在网页端修改
+
+secret_key = cb269b53c61kx8912
+;密钥，用于加密cookie，强烈建议修改
+
+delay=0.73
+;同步延时补偿，同步时向后延迟的时间，单位为秒
+
+debug = False
+;是否启用调试模式，不进行二次开发建议不动
+
+json_as_ascii = False
+;是否将json中的中文转为ascii码，不进行二次开发建议不动
+
