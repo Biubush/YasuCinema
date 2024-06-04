@@ -47,15 +47,15 @@ jobs:
         docker run --rm -v $(pwd):/src -w /src $PYTHON_IMAGE bash -c "
           pip install pyinstaller
           pyinstaller Yasu.spec
-          tar -czvf project-${PLATFORM}.tar.gz dist/Yasu
+          tar -czvf Yasu-${PLATFORM}.tar.gz dist/Yasu
         "
-        mv project-${PLATFORM}.tar.gz output/
+        mv Yasu-${PLATFORM}.tar.gz output/
 
     - name: Upload to release
       uses: actions/upload-artifact@v2
       with:
-        name: project-${{ matrix.platform }}.tar.gz
-        path: output/project-${{ matrix.platform }}.tar.gz
+        name: Yasu-${{ matrix.platform }}.tar.gz
+        path: output/Yasu-${{ matrix.platform }}.tar.gz
 
   release:
     needs: build
@@ -84,5 +84,5 @@ jobs:
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }}
         asset_path: output/
-        asset_name: project-${{ matrix.platform }}.tar.gz
+        asset_name: Yasu-${{ matrix.platform }}.tar.gz
         asset_content_type: application/gzip
