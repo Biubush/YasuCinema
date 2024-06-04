@@ -1,88 +1,88 @@
-name: Publish the built software
+name: Build and Release
 
 on:
   push:
     tags:
-    - '*' 
+      - 'v*'
 
 jobs:
   build:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
     strategy:
       matrix:
-        arch: [linux/amd64, linux/386, linux/arm/v5, linux/arm/v7, linux/arm64/v8, linux/mips64le, linux/ppc64le, linux/s390x]
-
+        platform:
+          - linux/amd64
+          - linux/386
+          - linux/arm/v5
+          - linux/arm/v7
+          - linux/arm64/v8
+          - linux/mips64le
+          - linux/ppc64le
+          - linux/s390x
     steps:
-    - name: Extract Tag Name
-      id: extract_tag
-      run: echo "tag_name=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
-
-    - name: Checkout code
+    - name: Checkout repository
       uses: actions/checkout@v2
 
     - name: Set up QEMU
       uses: docker/setup-qemu-action@v2
-      with:
-        platforms: all
 
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v2
-      with:
-        install: true
 
-    - name: Cache Docker layers
-      uses: actions/cache@v2
-      with:
-        path: /tmp/.buildx-cache
-        key: ${{ runner.os }}-buildx-${{ github.sha }}
-        restore-keys: |
-          ${{ runner.os }}-buildx-
-
-    - name: Build Docker image
+    - name: Build and package using PyInstaller
       run: |
-        docker buildx build --platform ${{ matrix.arch }} --output type=docker --tag pyinstaller-builder:${{ matrix.arch }} .
-
-    - name: Run PyInstaller
-      run: |
-        docker run --rm -v $PWD:/workspace pyinstaller-builder:${{ matrix.arch }} bash -c "
-          cd /workspace && \
-          pip install -r requirements.txt && \
-          pyinstaller Yasu.spec && \
-          mv dist/Yasu dist/Yasu_${{ env.tag_name }}_${{ matrix.arch }} && \
-          mv config.ini.example dist/config.ini.example && \
-          cd dist && \
-          tar -czf Yasu_${{ env.tag_name }}_${{ matrix.arch }}.tar.gz * && \
-          mv Yasu_${{ env.tag_name }}_${{ matrix.arch }}.tar.gz /workspace/binary/Yasu_${{ env.tag_name }}_${{ matrix.arch }}.tar.gz
+        PLATFORM=${{ matrix.platform }}
+        # Set up the appropriate architecture for PyInstaller
+        ARCH=$(echo $PLATFORM | cut -d '/' -f 2)
+        case $ARCH in
+          amd64) PYTHON_IMAGE="python:3.9-slim" ;;
+          386) PYTHON_IMAGE="i386/python:3.9-slim" ;;
+          arm/v5) PYTHON_IMAGE="arm32v5/python:3.9-slim" ;;
+          arm/v7) PYTHON_IMAGE="arm32v7/python:3.9-slim" ;;
+          arm64/v8) PYTHON_IMAGE="arm64v8/python:3.9-slim" ;;
+          mips64le) PYTHON_IMAGE="multiarch/mips64le-python:3.9-slim" ;;
+          ppc64le) PYTHON_IMAGE="ppc64le/python:3.9-slim" ;;
+          s390x) PYTHON_IMAGE="s390x/python:3.9-slim" ;;
+        esac
+        docker run --rm -v $(pwd):/src -w /src $PYTHON_IMAGE bash -c "
+          pip install pyinstaller
+          pyinstaller Yasu.spec
+          tar -czvf project-${PLATFORM}.tar.gz dist/Yasu
         "
+        mv project-${PLATFORM}.tar.gz output/
 
-    - name: Upload build result
-      uses: actions/upload-artifact@v3
+    - name: Upload to release
+      uses: actions/upload-artifact@v2
       with:
-        name: build-result-${{ matrix.arch }}
-        path: binary/Yasu_${{ env.tag_name }}_${{ matrix.arch }}.tar.gz
+        name: project-${{ matrix.platform }}.tar.gz
+        path: output/project-${{ matrix.platform }}.tar.gz
 
   release:
-    name: Create release
     needs: build
     runs-on: ubuntu-latest
-
     steps:
-    - name: Extract Tag Name
-      id: extract_tag
-      run: echo "tag_name=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
-  
-    - name: Use Tag Name
-      run: |
-        echo "Tag name: ${{ env.tag_name }}"
-
-    - name: Download artifacts
-      uses: actions/download-artifact@v3
+    - name: Download build artifacts
+      uses: actions/download-artifact@v2
       with:
-        name: build-result-${{ matrix.arch }}
+        path: output
 
-    - name: Release software
-      uses: ncipollo/release-action@v1
+    - name: Create GitHub Release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
-        artifacts: "binary/*.tar.gz"
-        token: ${{ secrets.GITHUB_TOKEN }}
-        tag: ${{ env.tag_name }}
+        tag_name: ${{ github.ref }}
+        release_name: Release ${{ github.ref }}
+        draft: false
+        prerelease: false
+
+    - name: Upload Release Assets
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: output/
+        asset_name: project-${{ matrix.platform }}.tar.gz
+        asset_content_type: application/gzip
