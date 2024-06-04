@@ -47,9 +47,9 @@ jobs:
         docker run --rm -v $(pwd):/src -w /src $PYTHON_IMAGE bash -c "
           pip install pyinstaller
           pyinstaller Yasu.spec
-          tar -czvf Yasu-${PLATFORM}.tar.gz dist/Yasu
+          tar -czvf Yasu-${PLATFORM//\//-}.tar.gz dist/Yasu
         "
-        mv Yasu-${PLATFORM}.tar.gz output/
+        mv Yasu-${PLATFORM//\//-}.tar.gz output/
 
     - name: Upload to release
       uses: actions/upload-artifact@v2
