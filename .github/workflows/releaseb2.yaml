@@ -1,4 +1,4 @@
-name: 324234
+name: Build and Release
 
 on:
   push:
@@ -38,7 +38,7 @@ jobs:
         cd dist
         architecture=$(uname -m)
         tar -czf Yasu_${architecture}.tar.gz *
-        mv Yasu_${architecture}.tar.gz $GITHUB_WORKSPACE/Yasu_${architecture}.tar.gz
+        mv Yasu_${architecture}.tar.gz ${{ github.workspace }}/Yasu_${architecture}.tar.gz
 
     - name: Create Release
       id: create_release
@@ -58,6 +58,6 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: $GITHUB_WORKSPACE/Yasu_${architecture}.tar.gz
+        asset_path: ${{ github.workspace }}/Yasu_${architecture}.tar.gz
         asset_name: Yasu_${architecture}.tar.gz
         asset_content_type: application/gzip
