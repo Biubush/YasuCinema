@@ -1,63 +1,88 @@
-name: Build and Release
+name: Publish the built software
 
 on:
   push:
-    branches:
-      - main
+    tags:
+    - '*' 
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
+    strategy:
+      matrix:
+        arch: [linux/amd64, linux/386, linux/arm/v5, linux/arm/v7, linux/arm64/v8, linux/mips64le, linux/ppc64le, linux/s390x]
 
     steps:
+    - name: Extract Tag Name
+      id: extract_tag
+      run: echo "tag_name=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
+
     - name: Checkout code
       uses: actions/checkout@v2
 
     - name: Set up QEMU
       uses: docker/setup-qemu-action@v2
-      with: 
-        platforms: linux/386,	linux/amd64, linux/arm/v5, linux/arm/v7, linux/arm64/v8, linux/mips64le, linux/ppc64le, linux/s390x
-
-    - name: Set up Python
-      uses: actions/setup-python@v2
       with:
-        python-version: 3.9
+        platforms: all
 
-    - name: Install dependencies
-      run: |
-        pip install -r requirements.txt
-
-    - name: Build the Flask Project
-      run: |
-        mkdir dist
-        pyinstaller Yasu.spec
-
-    - name: Package binaries
-      run: |
-        mv config.ini.example dist/config.ini.example
-        cd dist
-        architecture=$(uname -m)
-        tar -czf Yasu_${architecture}.tar.gz *
-        mv Yasu_${architecture}.tar.gz ${{ github.workspace }}/Yasu_${architecture}.tar.gz
-
-    - name: Create Release
-      id: create_release
-      uses: actions/create-release@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v2
       with:
-        tag_name: beta
-        release_name: Release 1.0.0
-        draft: false
-        prerelease: false
+        install: true
 
-    - name: Upload Release Asset
-      id: upload-release-asset
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    - name: Cache Docker layers
+      uses: actions/cache@v2
       with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ${{ github.workspace }}/Yasu_${architecture}.tar.gz
-        asset_name: Yasu_${architecture}.tar.gz
-        asset_content_type: application/gzip
+        path: /tmp/.buildx-cache
+        key: ${{ runner.os }}-buildx-${{ github.sha }}
+        restore-keys: |
+          ${{ runner.os }}-buildx-
+
+    - name: Build Docker image
+      run: |
+        docker buildx build --platform ${{ matrix.arch }} --output type=docker --tag pyinstaller-builder:${{ matrix.arch }} .
+
+    - name: Run PyInstaller
+      run: |
+        docker run --rm -v $PWD:/workspace pyinstaller-builder:${{ matrix.arch }} bash -c "
+          cd /workspace && \
+          pip install -r requirements.txt && \
+          pyinstaller Yasu.spec && \
+          mv dist/Yasu dist/Yasu_${{ env.tag_name }}_${{ matrix.arch }} && \
+          mv config.ini.example dist/config.ini.example && \
+          cd dist && \
+          tar -czf Yasu_${{ env.tag_name }}_${{ matrix.arch }}.tar.gz * && \
+          mv Yasu_${{ env.tag_name }}_${{ matrix.arch }}.tar.gz /workspace/binary/Yasu_${{ env.tag_name }}_${{ matrix.arch }}.tar.gz
+        "
+
+    - name: Upload build result
+      uses: actions/upload-artifact@v3
+      with:
+        name: build-result-${{ matrix.arch }}
+        path: binary/Yasu_${{ env.tag_name }}_${{ matrix.arch }}.tar.gz
+
+  release:
+    name: Create release
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Extract Tag Name
+      id: extract_tag
+      run: echo "tag_name=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
+  
+    - name: Use Tag Name
+      run: |
+        echo "Tag name: ${{ env.tag_name }}"
+
+    - name: Download artifacts
+      uses: actions/download-artifact@v3
+      with:
+        name: build-result-${{ matrix.arch }}
+
+    - name: Release software
+      uses: ncipollo/release-action@v1
+      with:
+        artifacts: "binary/*.tar.gz"
+        token: ${{ secrets.GITHUB_TOKEN }}
+        tag: ${{ env.tag_name }}
