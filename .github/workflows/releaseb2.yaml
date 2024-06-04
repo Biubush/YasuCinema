@@ -45,6 +45,7 @@ jobs:
           s390x) PYTHON_IMAGE="s390x/python:3.9-slim" ;;
         esac
         docker run --rm -v $(pwd):/src -w /src $PYTHON_IMAGE bash -c "
+          apt install python3 python3-pip
           pip install pyinstaller
           pyinstaller Yasu.spec
           tar -czvf Yasu-${PLATFORM//\//-}.tar.gz dist/Yasu
